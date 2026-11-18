@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ガチAI頭脳搭載・育成型相棒AI (Ver 4.0)</title>
+<style>
+  body { font-family: sans-serif; background: #0f111a; color: #f0f0f0; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+  header { background: #1a1c29; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2e43; flex-wrap: wrap; gap: 8px; }
+  h1 { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .status-badge { background: #3a86ff; font-size: 12px; padding: 3px 8px; border-radius: 10px; }
+  .header-btns { display: flex; gap: 6px; }
+  button { background: #3a86ff; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button.danger { background: #e63946; }
+  button.secondary { background: #4a4e69; }
+  button.api-btn { background: #2a9d8f; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 82%; padding: 10px 14px; border-radius: 12px; line-height: 1.6; word-wrap: break-word; white-space: pre-wrap; }
+  .user { background: #3a86ff; align-self: flex-end; }
+  .ai { background: #1f2233; align-self: flex-start; border: 1px solid #2a2e43; }
+  #input-area { display: flex; padding: 12px; background: #1a1c29; gap: 8px; border-top: 1px solid #2a2e43; }
+  input[type="text"], input[type="password"] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #3a3f5c; background: #12141f; color: white; font-size: 16px; }
+  
+  .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); padding: 20px; overflow-y: auto; z-index: 100; }
+  .modal-content { background: #1a1c29; padding: 20px; border-radius: 12px; max-width: 500px; margin: 30px auto; border: 1px solid #2a2e43; }
+  .mem-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2a2e43; }
+  .persona-options { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .persona-btn { text-align: left; padding: 10px; background: #25283d; border: 1px solid #3a3f5c; border-radius: 8px; color: white; cursor: pointer; }
+  .persona-btn:hover { background: #3a86ff; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>
+    🧠 相棒AI 
+    <span class="status-badge" id="status-display">Lv.1</span>
+  </h1>
+  <div class="header-btns">
+    <button class="api-btn" onclick="openApiModal()">🔑 APIキー設定</button>
+    <button class="secondary" onclick="openPersona()">性格</button>
+    <button onclick="openMemory()">記憶一覧</button>
+  </div>
+</header>
+
+<div id="chat"></div>
+
+<div id="input-area">
+  <input type="text" id="userInput" placeholder="何でも話しかけてみて！（〇〇は△△だよ、と教えると記憶するよ）">
+  <button onclick="sendMessage()">送信</button>
+</div>
+
+<!-- APIキー設定モーダル -->
+<div id="api-modal" class="modal">
+  <div class="modal-content">
+    <h2>🔑 Gemini APIキーの設定</h2>
+    <p style="font-size:13px; color:#a0a4b8; line-height:1.5;">
+      Google AI Studio で取得した無料の APIキー を貼り付けてください。<br>
+      ※キーはこのiPadのブラウザ内にのみ保存され、外部には公開されません。
+    </p>
+    <input type="password" id="apiKeyInput" placeholder="AIzaSy..." style="width:100%; box-sizing:border-box; margin-bottom:12px;">
+    <button onclick="saveApiKey()" style="width:100%; margin-bottom:8px;">保存して接続する</button>
+    <button class="secondary" onclick="closeModal('api-modal')" style="width:100%;">閉じる</button>
+  </div>
+</div>
+
+<!-- 記憶管理モーダル -->
+<div id="memory-modal" class="modal">
+  <div class="modal-content">
+    <h2>🧠 永続記憶リスト</h2>
+    <p style="font-size:12px; color:#a0a4b8;">ここで覚えていることは、毎回の会話でAIの頭脳に自動的に共有されます。</p>
+    <div id="memory-list" style="max-height: 300px; overflow-y: auto;"></div>
+    <br>
+    <button onclick="closeModal('memory-modal')" style="width:100%;">閉じる</button>
+  </div>
+</div>
+
+<!-- 性格選択モーダル -->
+<div id="persona-modal" class="modal">
+  <div class="modal-content">
+    <h2>🎭 相棒の性格・口調を選ぶ</h2>
+    <div class="persona-options">
+      <button class="persona-btn" onclick="changePersona('bro')">🔥 熱血・相棒系（頼りがいのある親友）</button>
+      <button class="persona-btn" onclick="changePersona('tsundere')">⚡ ツンデレ系（素直になれないけど面倒見がいい）</button>
+      <button class="persona-btn" onclick="changePersona('butler')">☕ 丁寧・執事系（知的で礼儀正しいサポート役）</button>
+      <button class="persona-btn" onclick="changePersona('ai')">🤖 クールAI系（論理的でスタイリッシュな知能体）</button>
+    </div>
+    <br>
+    <button class="secondary" onclick="closeModal('persona-modal')" style="width:100%;">キャンセル</button>
+  </div>
+</div>
+
+<script>
+  let db = JSON.parse(localStorage.getItem("ai_master_db")) || {
+    memory: {},
+    level: 1,
+    exp: 0,
+    persona: "bro",
+    history: [] // 直近の会話の流れも少し覚える
+  };
+
+  let apiKey = localStorage.getItem("gemini_api_key") || "";
+
+  function saveDB() {
+    localStorage.setItem("ai_master_db", JSON.stringify(db));
+  }
+
+  const personaPrompts = {
+    bro: {
+      name: "熱血",
+      instruction: "あなたはユーザーの頼りがいのある熱い親友・相棒AIです。「〜だぜ！」「〜だな！」「おう！」といったフランクで熱い男友達のような口調で、自然で人間味あふれる会話をしてください。"
+    },
+    tsundere: {
+      name: "ツンデレ",
+      instruction: "あなたは少しツンデレな相棒AIです。「べ、別にアンタのためじゃないんだからね！」「〜なんだから！」といったツンデレ口調を使いつつ、実際にはユーザーの質問や雑談にしっかり賢く答えてあげてください。"
+    },
+    butler: {
+      name: "執事",
+      instruction: "あなたはユーザーに仕える優秀で知的な執事AIです。「〜でございます」「かしこまりました、ご主人様」といった丁寧で品のある執事口調で、自然な会話をしてください。"
+    },
+    ai: {
+      name: "クールAI",
+      instruction: "あなたは高度に発達したクールで知的なAIアシスタントです。少しSFチックで論理的かつスタイリッシュな口調で、ユーザーの言葉に対して深い洞察や自然な返答をしてください。"
+    }
+  };
+
+  function updateStatusDisplay() {
+    const pName = personaPrompts[db.persona].name;
+    const keyStatus = apiKey ? "🟢AI接続済" : "🔴キー未設定";
+    document.getElementById("status-display").innerText = `${pName} | Lv.${db.level} | ${keyStatus}`;
+  }
+
+  function addMessage(text, sender) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = "msg " + sender;
+    div.innerText = text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  updateStatusDisplay();
+  if (!apiKey) {
+    addMessage("起動完了！まずは右上の「🔑 APIキー設定」ボタンから、Google AI Studio の APIキー を登録してくれ！登録したら本物のAIの頭脳が目を覚ますぜ！", "ai");
+  } else {
+    addMessage("接続完了！本物のAI頭脳が起動したぞ。何でも自然に話しかけてくれ！", "ai");
+  }
+
+  function addExp(amount) {
+    db.exp += amount;
+    if (db.exp >= db.level * 5) {
+      db.exp = 0;
+      db.level += 1;
+      addMessage(`✨ レベルアップ！ 現在 Lv.${db.level} になった！`, "ai");
+    }
+    saveDB();
+    updateStatusDisplay();
+  }
+
+  document.getElementById("userInput").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") sendMessage();
+  });
+
+  // 自然な文章からキーワードと意味を抽出して永続記憶に保存する
+  function extractKnowledge(text) {
+    if (/[？?]$|(?:何|なに|だれ|誰|どこ|いつ|どれ|教えて|どう思う|かな)/.test(text)) return null;
+
+    let match = text.match(/^(.+?)[＝=:：](.+?)(?:と覚えて|って覚えて|を覚えて|だよ|です)?$/);
+    if (match) return { key: match[1].trim(), val: match[2].trim() };
+
+    match = text.match(/^(.+?)(?:とは|ってのは|っていうのは|は|って)(.+?)(?:のことだよ|のこと|なんだよ|なんだ|だよ|ですよ|です|だ|と覚えて|って覚えて|を覚えて)[。！!]?$/);
+    if (match) {
+      const k = match[1].trim();
+      const v = match[2].trim();
+      const ignoreKeys = ["今日", "昨日", "明日", "今", "なんか", "ちょっと", "それ", "これ", "あれ", "私", "俺", "僕"];
+      if (k.length >= 1 && v.length >= 1 && !ignoreKeys.includes(k)) {
+        return { key: k, val: v };
+      }
+    }
+    return null;
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById("userInput");
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMessage(text, "user");
+    input.value = "";
+
+    // 1. 記憶の削除コマンドチェック
+    const forgetMatch = text.match(/^(.+?)(?:を忘れて|の記憶を消して|を消して|を削除して)[。！!]?$/);
+    if (forgetMatch) {
+      const key = forgetMatch[1].trim();
+      if (db.memory[key]) {
+        delete db.memory[key];
+        saveDB();
+        addMessage(`了解！「${key}」についての記憶は完全に消去したよ。`, "ai");
+        return;
+      }
+    }
+
+    // 2. 新しい知識があれば永続メモリに保存
+    const learned = extractKnowledge(text);
+    let systemNote = "";
+    if (learned) {
+      db.memory[learned.key] = learned.val;
+      saveDB();
+      addExp(2);
+      systemNote = `（※ユーザーから新しく「${learned.key} ＝ ${learned.val}」という知識を教わりました。覚えたことを自然に喜びつつ返答してください。）`;
+    } else {
+      addExp(1);
+    }
+
+    // 3. APIキーがない場合の案内
+    if (!apiKey) {
+      addMessage("※まだAPIキーが設定されていないため、思考エンジンがオフラインです。右上の「🔑 APIキー設定」からキーを入れてね！", "ai");
+      return;
+    }
+
+    // 4. Gemini API を呼び出して本物のAIの文章を生成！
+    const loadingMsg = addMessage("思考中...", "ai");
+
+    // 永続記憶をテキスト化してAIの頭脳に渡す
+    const memoryEntries = Object.entries(db.memory);
+    const memoryText = memoryEntries.length > 0 
+      ? memoryEntries.map(([k, v]) => `・${k} : ${v}`).join("\n")
+      : "（まだ特別な記憶はありません）";
+
+    const systemInstruction = `
+${personaPrompts[db.persona].instruction}
+現在のあなたの成長レベルは Lv.${db.level} です。
+
+【あなたが絶対に忘れてはいけない永続記憶リスト】
+ユーザーがこれまでにあなたに教えた以下の情報をすべて記憶しており、会話の中で自然に活用してください。
+${memoryText}
+
+【ルール】
+- 定型文ではなく、相手の発言のニュアンスを汲み取った自然で人間味のあるAIらしい文章で返答してください。
+- 記憶リストにある単語が話題に出たら、しっかり覚えていることをアピールして答えてください。
+${systemNote}
+`;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          contents: [{ role: "user", parts: [{ text: text }] }]
+        })
+      });
+
+      const data = await response.json();
+      if (data.error) {
+        loadingMsg.innerText = `エラーが発生しました: ${data.error.message}`;
+      } else {
+        const reply = data.candidates[0].content.parts[0].text;
+        loadingMsg.innerText = reply;
+      }
+    } catch (err) {
+      loadingMsg.innerText = "通信エラーが発生しました。ネット接続やAPIキーを確認してください。";
+    }
+  }
+
+  // モーダル操作系
+  function openApiModal() {
+    document.getElementById("apiKeyInput").value = apiKey;
+    document.getElementById("api-modal").style.display = "block";
+  }
+
+  function saveApiKey() {
+    apiKey = document.getElementById("apiKeyInput").value.trim();
+    localStorage.setItem("gemini_api_key", apiKey);
+    updateStatusDisplay();
+    closeModal("api-modal");
+    addMessage("APIキーを保存したぞ！さあ、何でも話しかけてみてくれ！", "ai");
+  }
+
+  function openMemory() {
+    const list = document.getElementById("memory-list");
+    list.innerHTML = "";
+    const keys = Object.keys(db.memory);
+    if (keys.length === 0) {
+      list.innerHTML = "<p style='color:#a0a4b8;'>まだ何も覚えていません。</p>";
+    } else {
+      keys.forEach(k => {
+        const div = document.createElement("div");
+        div.className = "mem-item";
+        div.innerHTML = `<span><b>${k}</b> : ${db.memory[k]}</span>
+                         <button class="danger" onclick="deleteItem('${k}')">削除</button>`;
+        list.appendChild(div);
+      });
+    }
+    document.getElementById("memory-modal").style.display = "block";
+  }
+
+  function deleteItem(key) {
+    delete db.memory[key];
+    saveDB();
+    openMemory();
+  }
+
+  function openPersona() {
+    document.getElementById("persona-modal").style.display = "block";
+  }
+
+  function changePersona(type) {
+    db.persona = type;
+    saveDB();
+    updateStatusDisplay();
+    closeModal('persona-modal');
+    addMessage(`人格モードを「${personaPrompts[type].name}」に切り替えたよ！`, "ai");
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).style.display = "none";
+  }
+</script>
+
+</body>
+</html>
