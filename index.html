@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ガチAI頭脳搭載・育成型相棒AI (Ver 4.0)</title>
+<title>ガチAI頭脳搭載・育成型相棒AI (Ver 4.1)</title>
 <style>
   body { font-family: sans-serif; background: #0f111a; color: #f0f0f0; margin: 0; display: flex; flex-direction: column; height: 100vh; }
   header { background: #1a1c29; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2e43; flex-wrap: wrap; gap: 8px; }
@@ -91,12 +91,15 @@
 </div>
 
 <script>
+  // 最新モデル名（ここを変更することでエラーを解消）
+  const MODEL_NAME = "gemini-3.8-flash";
+
   let db = JSON.parse(localStorage.getItem("ai_master_db")) || {
     memory: {},
     level: 1,
     exp: 0,
     persona: "bro",
-    history: [] // 直近の会話の流れも少し覚える
+    history: []
   };
 
   let apiKey = localStorage.getItem("gemini_api_key") || "";
@@ -144,7 +147,7 @@
   if (!apiKey) {
     addMessage("起動完了！まずは右上の「🔑 APIキー設定」ボタンから、Google AI Studio の APIキー を登録してくれ！登録したら本物のAIの頭脳が目を覚ますぜ！", "ai");
   } else {
-    addMessage("接続完了！本物のAI頭脳が起動したぞ。何でも自然に話しかけてくれ！", "ai");
+    addMessage("接続完了！最新モデル（gemini-3.8-flash）で起動したぞ。何でも自然に話しかけてくれ！", "ai");
   }
 
   function addExp(amount) {
@@ -162,7 +165,6 @@
     if (e.key === "Enter") sendMessage();
   });
 
-  // 自然な文章からキーワードと意味を抽出して永続記憶に保存する
   function extractKnowledge(text) {
     if (/[？?]$|(?:何|なに|だれ|誰|どこ|いつ|どれ|教えて|どう思う|かな)/.test(text)) return null;
 
@@ -189,7 +191,6 @@
     addMessage(text, "user");
     input.value = "";
 
-    // 1. 記憶の削除コマンドチェック
     const forgetMatch = text.match(/^(.+?)(?:を忘れて|の記憶を消して|を消して|を削除して)[。！!]?$/);
     if (forgetMatch) {
       const key = forgetMatch[1].trim();
@@ -201,7 +202,6 @@
       }
     }
 
-    // 2. 新しい知識があれば永続メモリに保存
     const learned = extractKnowledge(text);
     let systemNote = "";
     if (learned) {
@@ -213,16 +213,13 @@
       addExp(1);
     }
 
-    // 3. APIキーがない場合の案内
     if (!apiKey) {
       addMessage("※まだAPIキーが設定されていないため、思考エンジンがオフラインです。右上の「🔑 APIキー設定」からキーを入れてね！", "ai");
       return;
     }
 
-    // 4. Gemini API を呼び出して本物のAIの文章を生成！
     const loadingMsg = addMessage("思考中...", "ai");
 
-    // 永続記憶をテキスト化してAIの頭脳に渡す
     const memoryEntries = Object.entries(db.memory);
     const memoryText = memoryEntries.length > 0 
       ? memoryEntries.map(([k, v]) => `・${k} : ${v}`).join("\n")
@@ -243,7 +240,7 @@ ${systemNote}
 `;
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -264,7 +261,6 @@ ${systemNote}
     }
   }
 
-  // モーダル操作系
   function openApiModal() {
     document.getElementById("apiKeyInput").value = apiKey;
     document.getElementById("api-modal").style.display = "block";
