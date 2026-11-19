@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ガチAI頭脳搭載・育成型相棒AI (Ver 4.2)</title>
+<title>ガチAI頭脳搭載・育成型相棒AI (Ver 4.3)</title>
 <style>
   body { font-family: sans-serif; background: #0f111a; color: #f0f0f0; margin: 0; display: flex; flex-direction: column; height: 100vh; }
   header { background: #1a1c29; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2e43; flex-wrap: wrap; gap: 8px; }
@@ -20,7 +20,8 @@
   .ai { background: #1f2233; align-self: flex-start; border: 1px solid #2a2e43; }
   #input-area { display: flex; padding: 12px; background: #1a1c29; gap: 8px; border-top: 1px solid #2a2e43; }
   input[type="text"], input[type="password"] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #3a3f5c; background: #12141f; color: white; font-size: 16px; }
-  
+  label { display: block; font-size: 12px; color: #b8bdd4; margin-bottom: 4px; }
+
   .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); padding: 20px; overflow-y: auto; z-index: 100; }
   .modal-content { background: #1a1c29; padding: 20px; border-radius: 12px; max-width: 500px; margin: 30px auto; border: 1px solid #2a2e43; }
   .mem-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2a2e43; }
@@ -33,7 +34,7 @@
 
 <header>
   <h1>
-    🧠 相棒AI 
+    🧠 相棒AI
     <span class="status-badge" id="status-display">Lv.1</span>
   </h1>
   <div class="header-btns">
@@ -53,12 +54,17 @@
 <!-- APIキー設定モーダル -->
 <div id="api-modal" class="modal">
   <div class="modal-content">
-    <h2>🔑 Gemini APIキーの設定</h2>
+    <h2>🔑 Gemini APIキー＆モデル設定</h2>
     <p style="font-size:13px; color:#a0a4b8; line-height:1.5;">
-      Google AI Studio で取得した無料の APIキー を貼り付けてください。<br>
-      ※キーはこのiPadのブラウザ内にのみ保存され、外部には公開されません。
+      Google AI Studio で取得した APIキー を貼り付けてください。<br>
+      ※キーはこのiPadのブラウザ内にのみ保存されます。
     </p>
+    <label for="apiKeyInput">APIキー</label>
     <input type="password" id="apiKeyInput" placeholder="AIzaSy..." style="width:100%; box-sizing:border-box; margin-bottom:12px;">
+
+    <label for="modelNameInput">モデル名（混んでいるときの変更用）</label>
+    <input type="text" id="modelNameInput" placeholder="gemini-3.8-flash" style="width:100%; box-sizing:border-box; margin-bottom:14px;">
+
     <button onclick="saveApiKey()" style="width:100%; margin-bottom:8px;">保存して接続する</button>
     <button class="secondary" onclick="closeModal('api-modal')" style="width:100%;">閉じる</button>
   </div>
@@ -91,7 +97,7 @@
 </div>
 
 <script>
-  const MODEL_NAME = "gemini-3.8-flash";
+  const DEFAULT_MODEL = "gemini-3.8-flash";
 
   let db = JSON.parse(localStorage.getItem("ai_master_db")) || {
     memory: {},
@@ -102,6 +108,7 @@
   };
 
   let apiKey = localStorage.getItem("gemini_api_key") || "";
+  let modelName = localStorage.getItem("gemini_model_name") || DEFAULT_MODEL;
 
   function saveDB() {
     localStorage.setItem("ai_master_db", JSON.stringify(db));
@@ -128,7 +135,7 @@
 
   function updateStatusDisplay() {
     const pName = personaPrompts[db.persona].name;
-    const keyStatus = apiKey ? "🟢AI接続済" : "🔴キー未設定";
+    const keyStatus = apiKey ? `🟢${modelName}` : "🔴キー未設定";
     document.getElementById("status-display").innerText = `${pName} | Lv.${db.level} | ${keyStatus}`;
   }
 
@@ -144,9 +151,9 @@
 
   updateStatusDisplay();
   if (!apiKey) {
-    addMessage("起動完了！まずは右上の「🔑 APIキー設定」ボタンから、Google AI Studio の APIキー を登録してくれ！登録したら本物のAIの頭脳が目を覚ますぜ！", "ai");
+    addMessage("起動完了！まずは右上の「🔑 APIキー設定」ボタンから、Google AI Studio の APIキー を登録してくれ！", "ai");
   } else {
-    addMessage("接続完了！Interactions API（gemini-3.8-flash）で起動したぞ。何でも自然に話しかけてくれ！", "ai");
+    addMessage(`接続完了！モデル「${modelName}」でスタンバイ中だ。混み合ってるときは自動で再送を試すようにしてあるぜ！`, "ai");
   }
 
   function addExp(amount) {
@@ -182,7 +189,6 @@
     return null;
   }
 
-  // Interactions API のレスポンスからテキストを取り出す
   function extractReplyText(data) {
     if (typeof data.output_text === "string" && data.output_text) return data.output_text;
     if (Array.isArray(data.outputs)) {
@@ -195,6 +201,45 @@
       return data.candidates[0].content.parts[0].text;
     }
     return null;
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function callInteractionWithRetry(systemInstruction, text, statusEl, maxRetries = 3) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        body: JSON.stringify({
+          model: modelName,
+          system_instruction: systemInstruction,
+          input: text
+        })
+      });
+
+      const data = await response.json();
+      if (!data.error) {
+        return { ok: true, data };
+      }
+
+      const msg = data.error.message || "";
+      const isHighDemand = /high demand|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(msg);
+
+      if (isHighDemand && attempt < maxRetries) {
+        const waitSec = (attempt + 1) * 2;
+        statusEl.innerText = `ちょっと混み合ってるみたいだ… ${waitSec}秒後に再送してみる (${attempt + 1}/${maxRetries})`;
+        await sleep(waitSec * 1000);
+        statusEl.innerText = "再送中...";
+        continue;
+      }
+
+      return { ok: false, message: msg };
+    }
   }
 
   async function sendMessage() {
@@ -235,7 +280,7 @@
     const loadingMsg = addMessage("思考中...", "ai");
 
     const memoryEntries = Object.entries(db.memory);
-    const memoryText = memoryEntries.length > 0 
+    const memoryText = memoryEntries.length > 0
       ? memoryEntries.map(([k, v]) => `・${k} : ${v}`).join("\n")
       : "（まだ特別な記憶はありません）";
 
@@ -254,24 +299,11 @@ ${systemNote}
 `;
 
     try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey
-        },
-        body: JSON.stringify({
-          model: MODEL_NAME,
-          system_instruction: systemInstruction,
-          input: text
-        })
-      });
-
-      const data = await response.json();
-      if (data.error) {
-        loadingMsg.innerText = `エラーが発生しました: ${data.error.message}`;
+      const result = await callInteractionWithRetry(systemInstruction, text, loadingMsg, 3);
+      if (!result.ok) {
+        loadingMsg.innerText = `エラーが発生しました: ${result.message}`;
       } else {
-        const reply = extractReplyText(data);
+        const reply = extractReplyText(result.data);
         loadingMsg.innerText = reply || "（返答を取得できませんでした。レスポンス形式を確認してください）";
       }
     } catch (err) {
@@ -281,15 +313,20 @@ ${systemNote}
 
   function openApiModal() {
     document.getElementById("apiKeyInput").value = apiKey;
+    document.getElementById("modelNameInput").value = modelName;
     document.getElementById("api-modal").style.display = "block";
   }
 
   function saveApiKey() {
     apiKey = document.getElementById("apiKeyInput").value.trim();
+    const enteredModel = document.getElementById("modelNameInput").value.trim();
+    modelName = enteredModel || DEFAULT_MODEL;
+
     localStorage.setItem("gemini_api_key", apiKey);
+    localStorage.setItem("gemini_model_name", modelName);
     updateStatusDisplay();
     closeModal("api-modal");
-    addMessage("APIキーを保存したぞ！さあ、何でも話しかけてみてくれ！", "ai");
+    addMessage(`設定を保存したぞ！モデル「${modelName}」で試してみよう！`, "ai");
   }
 
   function openMemory() {
